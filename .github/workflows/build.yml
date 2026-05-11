@@ -23,45 +23,65 @@ jobs:
           mkdir -p htdocs/luci-static/argon/fonts
           curl -sLo htdocs/luci-static/argon/fonts/VT323.woff2 "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2"
 
-      - name: Build IPK
+      - name: Build IPK via dpkg-deb + convert
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
           WS="$GITHUB_WORKSPACE"
-          D=$(mktemp -d)
-          C=$(mktemp -d)
-          B=$(mktemp -d)
           
-          mkdir -p "$D/www/luci-static/argon" "$D/usr/share/luci"
-          cp -r "$WS/htdocs/luci-static/argon/"* "$D/www/luci-static/argon/"
-          [ -d "$WS/ucode" ] && cp -r "$WS/ucode/"* "$D/usr/share/luci/" || true
+          # 1. Создаём структуру для dpkg-deb (требует DEBIAN)
+          ROOT=$(mktemp -d)
+          mkdir -p "$ROOT"/{DEBIAN,www/luci-static/argon,usr/share/luci}
           
-          mkdir -p "$C/CONTROL"
+          # Копируем файлы темы
+          cp -r "$WS/htdocs/luci-static/argon/"* "$ROOT/www/luci-static/argon/"
+          [ -d "$WS/ucode" ] && cp -r "$WS/ucode/"* "$ROOT/usr/share/luci/" || true
           
-          # Создаём control файл через printf (НИКАКИХ heredoc!)
-          printf "Package: %s\n" "$PKG" > "$C/CONTROL/control"
-          printf "Version: %s\n" "$VER" >> "$C/CONTROL/control"
-          printf "Depends: luci-base\n" >> "$C/CONTROL/control"
-          printf "Section: luci\n" >> "$C/CONTROL/control"
-          printf "Architecture: all\n" >> "$C/CONTROL/control"
-          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$C/CONTROL/control"
-          printf "Description: Argon OLED Black Theme\n" >> "$C/CONTROL/control"
-          printf "\n" >> "$C/CONTROL/control"
+          # Создаём control для dpkg (DEBIAN/control)
+          printf "Package: %s\n" "$PKG" > "$ROOT/DEBIAN/control"
+          printf "Version: %s\n" "$VER" >> "$ROOT/DEBIAN/control"
+          printf "Depends: luci-base\n" >> "$ROOT/DEBIAN/control"
+          printf "Section: luci\n" >> "$ROOT/DEBIAN/control"
+          printf "Architecture: all\n" >> "$ROOT/DEBIAN/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$ROOT/DEBIAN/control"
+          printf "Description: Argon OLED Black Theme\n" >> "$ROOT/DEBIAN/control"
+          printf "\n" >> "$ROOT/DEBIAN/control"
           
-          printf '#!/bin/sh\nexit 0\n' > "$C/CONTROL/postinst"
-          chmod 755 "$C/CONTROL/postinst"
+          printf '#!/bin/sh\nexit 0\n' > "$ROOT/DEBIAN/postinst"
+          chmod 755 "$ROOT/DEBIAN/postinst"
           
-          tar -czf "$B/data.tar.gz" -C "$D" --transform 's,^\.,./,' .
-          tar -czf "$B/control.tar.gz" -C "$C" --transform 's,^\.,./,' .
-          printf '2.0\n' > "$B/debian-binary"
-          
+          # 2. Собираем .deb через dpkg-deb (создаёт валидный ar-архив)
           mkdir -p "$WS/bin/packages"
-          OUT="$WS/bin/packages/${PKG}_${VER}_all.ipk"
-          ar rcs "$OUT" "$B/debian-binary" "$B/control.tar.gz" "$B/data.tar.gz"
+          DEB="$WS/bin/packages/${PKG}_${VER}_all.deb"
+          dpkg-deb --build --root-owner-group "$ROOT" "$DEB"
           
-          echo "✅ Built: $OUT"
-          file "$OUT"
-          ar t "$OUT"
+          # 3. Конвертируем .deb → .ipk: переименовываем DEBIAN → CONTROL внутри control.tar.gz
+          IPK="$WS/bin/packages/${PKG}_${VER}_all.ipk"
+          TMP=$(mktemp -d)
+          
+          # Извлекаем компоненты из .deb
+          cd "$TMP"
+          ar x "$DEB"
+          
+          # Перепаковываем control.tar.gz с заменой DEBIAN → CONTROL
+          mkdir ctrl data
+          tar -xzf control.tar.gz -C ctrl
+          tar -xzf data.tar.gz -C data
+          
+          # Переименовываем DEBIAN → CONTROL
+          [ -d ctrl/DEBIAN ] && mv ctrl/DEBIAN ctrl/CONTROL
+          
+          # Создаём новые архивы
+          tar -czf control.tar.gz -C ctrl --transform 's,^\.,./,' .
+          tar -czf data.tar.gz -C data --transform 's,^\.,./,' .
+          
+          # Собираем финальный .ipk (используем ar из того же места, что создал валидный .deb)
+          ar rcs "$IPK" debian-binary control.tar.gz data.tar.gz
+          
+          echo "✅ Built: $IPK"
+          file "$IPK"
+          echo "=== Archive ===" && ar t "$IPK"
+          echo "=== Control ===" && tar -xOf "$IPK" control.tar.gz | tar -xzf - ./CONTROL/control 2>/dev/null || tar -xOf "$IPK" control.tar.gz | tar -xzf - CONTROL/control
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
