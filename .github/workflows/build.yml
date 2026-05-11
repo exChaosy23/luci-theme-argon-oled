@@ -26,15 +26,19 @@ jobs:
             -o htdocs/luci-static/argon/fonts/VT323.woff2
           
           echo "✅ OLED assets prepared"
+          echo "=== CSS files ==="
           ls -la htdocs/luci-static/argon/css/
+          echo "=== Font files ==="
           ls -la htdocs/luci-static/argon/fonts/
 
       - name: Build IPK with OpenWrt SDK
         uses: openwrt/gh-action-sdk@v5
         with:
           arch: x86_64
-          # ❌ УДАЛИТЕ ЭТУ СТРОКУ: feedname: luci
-          # Пакет в корне репозитория соберётся автоматически
+        env:
+          NO_DEFAULT_FEEDS: "true"
+          PACKAGES: "luci-theme-argon"
+          V: "s"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
