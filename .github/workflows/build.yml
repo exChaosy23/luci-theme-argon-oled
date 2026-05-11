@@ -24,63 +24,45 @@ jobs:
             exit 1
           fi
           mkdir -p htdocs/luci-static/argon/fonts
-          curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" \
-            -o htdocs/luci-static/argon/fonts/VT323.woff2
-          echo "✅ OLED assets prepared"
+          curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" -o htdocs/luci-static/argon/fonts/VT323.woff2
+          echo "✅ Assets prepared"
 
-      - name: Build IPK (ar format)
+      - name: Build IPK via dpkg-deb
         run: |
-          WORKSPACE="$GITHUB_WORKSPACE"
-          BUILD_DIR=$(mktemp -d)
-          DATA_DIR=$(mktemp -d)
-          CTRL_DIR=$(mktemp -d)
+          PKG="${{ env.PACKAGE_NAME }}"
+          VER="${{ env.PACKAGE_VERSION }}"
+          ROOT=$(mktemp -d)
           
-          mkdir -p "$DATA_DIR"/{www/luci-static/argon,usr/share/luci}
-          mkdir -p "$CTRL_DIR/CONTROL"
+          # Создаём структуру пакета (пути = пути установки в OpenWrt)
+          mkdir -p "$ROOT"/{DEBIAN,www/luci-static/argon,usr/share/luci}
           
-          # 1. Копируем файлы интерфейса
-          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$DATA_DIR/www/luci-static/argon/"
-          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
+          # Копируем статические файлы (CSS, шрифты, картинки)
+          cp -r htdocs/luci-static/argon/* "$ROOT/www/luci-static/argon/"
           
-          # 2. Создаём control
-          printf "Package: %s\n" "${{ env.PACKAGE_NAME }}" > "$CTRL_DIR/CONTROL/control"
-          printf "Version: %s\n" "${{ env.PACKAGE_VERSION }}" >> "$CTRL_DIR/CONTROL/control"
-          printf "Depends: luci-base\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "SourceName: %s\n" "${{ env.PACKAGE_NAME }}" >> "$CTRL_DIR/CONTROL/control"
-          printf "Section: luci\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$CTRL_DIR/CONTROL/control"
-          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "Architecture: all\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "Installed-Size: 0\n" >> "$CTRL_DIR/CONTROL/control"
-          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$CTRL_DIR/CONTROL/control"
+          # Копируем ucode-шаблоны (если есть)
+          [ -d ucode ] && cp -r ucode/* "$ROOT/usr/share/luci/" || true
           
-          # Скрипты установки/удаления
-          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$CTRL_DIR/CONTROL/postinst"
-          chmod 755 "$CTRL_DIR/CONTROL/postinst"
-          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$CTRL_DIR/CONTROL/prerm"
-          chmod 755 "$CTRL_DIR/CONTROL/prerm"
+          # Создаём DEBIAN/control (без heredoc, чтобы избежать ошибок YAML)
+          printf "Package: %s\n" "$PKG" > "$ROOT/DEBIAN/control"
+          printf "Version: %s\n" "$VER" >> "$ROOT/DEBIAN/control"
+          printf "Depends: luci-base\n" >> "$ROOT/DEBIAN/control"
+          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$ROOT/DEBIAN/control"
+          printf "Section: luci\n" >> "$ROOT/DEBIAN/control"
+          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$ROOT/DEBIAN/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$ROOT/DEBIAN/control"
+          printf "Architecture: all\n" >> "$ROOT/DEBIAN/control"
+          printf "Installed-Size: 2048\n" >> "$ROOT/DEBIAN/control"
+          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$ROOT/DEBIAN/control"
           
-          # 3. Создаём data.tar.gz (только payload)
-          tar -czf "$BUILD_DIR/data.tar.gz" -C "$DATA_DIR" .
+          # Убираем world-writable permissions (требование dpkg-deb)
+          chmod -R go-w "$ROOT"
           
-          # 4. Создаём control.tar.gz (только метаданные)
-          tar -czf "$BUILD_DIR/control.tar.gz" -C "$CTRL_DIR" .
+          # Собираем валидный .ipk
+          mkdir -p bin/packages
+          dpkg-deb --build --root-owner-group "$ROOT" "bin/packages/${PKG}_${VER}_all.ipk"
           
-          # 5. Создаём debian-binary
-          echo "2.0" > "$BUILD_DIR/debian-binary"
-          
-          # 6. Собираем .ipk через ar (правильный формат для opkg)
-          mkdir -p "$WORKSPACE/bin/packages"
-          ar rcs "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" \
-            "$BUILD_DIR/debian-binary" \
-            "$BUILD_DIR/control.tar.gz" \
-            "$BUILD_DIR/data.tar.gz"
-          
-          echo "✅ IPK created successfully"
-          ls -lh "$WORKSPACE/bin/packages/"
-          echo "=== .ipk internal structure ==="
-          ar t "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk"
+          echo "✅ IPK built successfully"
+          file "bin/packages/${PKG}_${VER}_all.ipk"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
