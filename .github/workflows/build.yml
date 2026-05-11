@@ -30,18 +30,18 @@ jobs:
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
+          WORKSPACE="$GITHUB_WORKSPACE"
           
           DATA_DIR=$(mktemp -d)
           CTRL_DIR=$(mktemp -d)
           BUILD_DIR=$(mktemp -d)
           
           mkdir -p "$DATA_DIR"/{www/luci-static/argon,usr/share/luci}
-          cp -r htdocs/luci-static/argon/* "$DATA_DIR/www/luci-static/argon/"
-          [ -d ucode ] && cp -r ucode/* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
+          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$DATA_DIR/www/luci-static/argon/"
+          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
           
           mkdir -p "$CTRL_DIR/CONTROL"
           
-          # Создаём control файл через printf (без heredoc!)
           printf "Package: %s\n" "$PKG" > "$CTRL_DIR/CONTROL/control"
           printf "Version: %s\n" "$VER" >> "$CTRL_DIR/CONTROL/control"
           printf "Depends: luci-base\n" >> "$CTRL_DIR/CONTROL/control"
@@ -53,32 +53,26 @@ jobs:
           printf "Installed-Size: 2048\n" >> "$CTRL_DIR/CONTROL/control"
           printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$CTRL_DIR/CONTROL/control"
           
-          # Удаляем возможные \r
           sed -i 's/\r$//' "$CTRL_DIR/CONTROL/control"
           
-          # Скрипты
           printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/postinst"
           chmod 755 "$CTRL_DIR/CONTROL/postinst"
           printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/prerm"
           chmod 755 "$CTRL_DIR/CONTROL/prerm"
           
-          # data.tar.gz с ./ префиксом
           tar -czf "$BUILD_DIR/data.tar.gz" -C "$DATA_DIR" --transform 's,^\.,./,' .
-          
-          # control.tar.gz с ./ префиксом
           tar -czf "$BUILD_DIR/control.tar.gz" -C "$CTRL_DIR" --transform 's,^\.,./,' .
-          
-          # debian-binary (ровно 4 байта)
           printf '2.0\n' > "$BUILD_DIR/debian-binary"
           
-          # Сборка .ipk через ar
-          mkdir -p bin/packages
-          cd "$BUILD_DIR"
-          ar rcs "../../bin/packages/${PKG}_${VER}_all.ipk" debian-binary control.tar.gz data.tar.gz
+          mkdir -p "$WORKSPACE/bin/packages"
+          ar rcs "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk" \
+            "$BUILD_DIR/debian-binary" \
+            "$BUILD_DIR/control.tar.gz" \
+            "$BUILD_DIR/data.tar.gz"
           
           echo "✅ IPK built"
-          file "../../bin/packages/${PKG}_${VER}_all.ipk"
-          ar t "../../bin/packages/${PKG}_${VER}_all.ipk"
+          file "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk"
+          ar t "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
