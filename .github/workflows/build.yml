@@ -14,7 +14,7 @@ jobs:
 
       - name: Prepare OLED CSS & Font
         run: |
-          # CSS уже готов в репозитории, просто проверяем наличие
+          # Проверяем наличие основного CSS-файла
           if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
             echo "❌ oled-black.css not found!"
             exit 1
@@ -26,12 +26,15 @@ jobs:
             -o htdocs/luci-static/argon/fonts/VT323.woff2
           
           echo "✅ OLED assets prepared"
+          ls -la htdocs/luci-static/argon/css/
+          ls -la htdocs/luci-static/argon/fonts/
 
       - name: Build IPK with OpenWrt SDK
         uses: openwrt/gh-action-sdk@v5
         with:
           arch: x86_64
-          feedname: luci
+          # ❌ УДАЛИТЕ ЭТУ СТРОКУ: feedname: luci
+          # Пакет в корне репозитория соберётся автоматически
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
