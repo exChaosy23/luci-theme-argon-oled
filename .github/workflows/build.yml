@@ -32,35 +32,28 @@ jobs:
           VER="${{ env.PACKAGE_VERSION }}"
           ROOT=$(mktemp -d)
           
-          # Структура пакета
           mkdir -p "$ROOT"/{CONTROL,www/luci-static/argon,usr/share/luci}
-          
-          # Копируем файлы
           cp -r htdocs/luci-static/argon/* "$ROOT/www/luci-static/argon/"
-          [ -d ucode ] && cp -r ucode/* "$ROOT/usr/share/luci/" || true
+          [ -d ucode ] && cp -r ucode/* "$ROOT/usr/share/luci/" 2>/dev/null || true
           
-          # DEBIAN/CONTROL файл (строгий формат OpenWrt)
-          printf "Package: %s\nVersion: %s\nDepends: luci-base\nSection: luci\nPriority: optional\nArchitecture: all\nMaintainer: Jerrykuku <jerrykuku@qq.com>\nSource: https://github.com/jerrykuku/luci-theme-argon\nDescription: Argon OLED Black Theme with VT323 pixel font\n\n" "$PKG" "$VER" > "$ROOT/CONTROL/control"
+          # 🔒 Создаём control с жесткими LF-переносами
+          printf "Package: %s\nVersion: %s\nDepends: luci-base\nSource: https://github.com/jerrykuku/luci-theme-argon\nSection: luci\nPriority: optional\nArchitecture: all\nMaintainer: Jerrykuku <jerrykuku@qq.com>\nInstalled-Size: 2048\nDescription: Argon OLED Black Theme with VT323 pixel font\n\n" "$PKG" "$VER" > "$ROOT/CONTROL/control"
           
-          # Скрипты установки/удаления
-          printf '#!/bin/sh\nexit 0\n' > "$ROOT/CONTROL/postinst"
-          chmod 755 "$ROOT/CONTROL/postinst"
-          printf '#!/bin/sh\nexit 0\n' > "$ROOT/CONTROL/prerm"
-          chmod 755 "$ROOT/CONTROL/prerm"
+          # Убираем любые возможные \r (Windows-переносы)
+          sed -i 's/\r$//' "$ROOT/CONTROL/control"
+          chmod 755 "$ROOT/CONTROL/postinst" 2>/dev/null || true
+          chmod 755 "$ROOT/CONTROL/prerm" 2>/dev/null || true
           
-          # Сборка архивов с ЯВНЫМ gzip (opkg не понимает zstd/xz)
-          tar -czf /tmp/control.tar.gz -C "$ROOT/CONTROL" .
-          tar -czf /tmp/data.tar.gz -C "$ROOT" .
-          echo "2.0" > /tmp/debian-binary
-          
-          # Формируем .ipk
+          # Собираем через dpkg-deb (стандарт для opkg)
           mkdir -p bin/packages
-          ar rcs "bin/packages/${PKG}_${VER}_all.ipk" /tmp/debian-binary /tmp/control.tar.gz /tmp/data.tar.gz
+          dpkg-deb --build --root-owner-group "$ROOT" "bin/packages/${PKG}_${VER}_all.ipk"
           
-          echo "✅ IPK built successfully"
+          echo "✅ IPK built"
           file "bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Archive structure ==="
-          ar t "bin/packages/${PKG}_${VER}_all.ipk"
+          echo "=== Control file check ==="
+          tar -xzf "bin/packages/${PKG}_${VER}_all.ipk" control.tar.gz -O 2>/dev/null | tar -xzf - control/CONTROL 2>/dev/null | head -20
+          echo "=== Hex dump first 50 bytes ==="
+          xxd "bin/packages/${PKG}_${VER}_all.ipk" | head -3
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -68,13 +61,3 @@ jobs:
           name: ${{ env.PACKAGE_NAME }}-oled-black
           path: bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk
           retention-days: 90
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk
-          generate_release_notes: true
-          draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
