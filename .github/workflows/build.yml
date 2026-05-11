@@ -26,34 +26,64 @@ jobs:
           curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" -o htdocs/luci-static/argon/fonts/VT323.woff2
           echo "✅ Assets prepared"
 
-      - name: Build IPK (Strict OpenWrt Format)
+      - name: Build IPK (OpenWrt Native Format)
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
-          ROOT=$(mktemp -d)
           
-          mkdir -p "$ROOT"/{CONTROL,www/luci-static/argon,usr/share/luci}
-          cp -r htdocs/luci-static/argon/* "$ROOT/www/luci-static/argon/"
-          [ -d ucode ] && cp -r ucode/* "$ROOT/usr/share/luci/" 2>/dev/null || true
+          # Временные директории
+          DATA_DIR=$(mktemp -d)
+          CTRL_DIR=$(mktemp -d)
+          BUILD_DIR=$(mktemp -d)
           
-          # 🔒 Создаём control с жесткими LF-переносами
-          printf "Package: %s\nVersion: %s\nDepends: luci-base\nSource: https://github.com/jerrykuku/luci-theme-argon\nSection: luci\nPriority: optional\nArchitecture: all\nMaintainer: Jerrykuku <jerrykuku@qq.com>\nInstalled-Size: 2048\nDescription: Argon OLED Black Theme with VT323 pixel font\n\n" "$PKG" "$VER" > "$ROOT/CONTROL/control"
+          # 1. Создаём структуру данных (payload)
+          mkdir -p "$DATA_DIR"/{www/luci-static/argon,usr/share/luci}
+          cp -r htdocs/luci-static/argon/* "$DATA_DIR/www/luci-static/argon/"
+          [ -d ucode ] && cp -r ucode/* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
           
-          # Убираем любые возможные \r (Windows-переносы)
-          sed -i 's/\r$//' "$ROOT/CONTROL/control"
-          chmod 755 "$ROOT/CONTROL/postinst" 2>/dev/null || true
-          chmod 755 "$ROOT/CONTROL/prerm" 2>/dev/null || true
+          # 2. Создаём CONTROL/control (OpenWrt формат)
+          mkdir -p "$CTRL_DIR/CONTROL"
+          cat > "$CTRL_DIR/CONTROL/control" << CTRL_EOF
+Package: $PKG
+Version: $VER
+Depends: luci-base
+Source: https://github.com/jerrykuku/luci-theme-argon
+Section: luci
+Priority: optional
+Architecture: all
+Maintainer: Jerrykuku <jerrykuku@qq.com>
+Installed-Size: 2048
+Description: Argon OLED Black Theme with VT323 pixel font
+CTRL_EOF
+          # Гарантируем чистые LF-переносы
+          sed -i 's/\r$//' "$CTRL_DIR/CONTROL/control"
           
-          # Собираем через dpkg-deb (стандарт для opkg)
+          # Скрипты (опционально)
+          printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/postinst"
+          chmod 755 "$CTRL_DIR/CONTROL/postinst"
+          printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/prerm"
+          chmod 755 "$CTRL_DIR/CONTROL/prerm"
+          
+          # 3. Создаём data.tar.gz (с ./ префиксом!)
+          tar -czf "$BUILD_DIR/data.tar.gz" -C "$DATA_DIR" --transform 's,^\.,./,' .
+          
+          # 4. Создаём control.tar.gz (с ./ префиксом!)
+          tar -czf "$BUILD_DIR/control.tar.gz" -C "$CTRL_DIR" --transform 's,^\.,./,' .
+          
+          # 5. Создаём debian-binary (ровно 4 байта: "2.0\n")
+          printf '2.0\n' > "$BUILD_DIR/debian-binary"
+          
+          # 6. Собираем .ipk через ar (строгий порядок файлов!)
           mkdir -p bin/packages
-          dpkg-deb --build --root-owner-group "$ROOT" "bin/packages/${PKG}_${VER}_all.ipk"
+          cd "$BUILD_DIR"
+          ar rcs "../../bin/packages/${PKG}_${VER}_all.ipk" debian-binary control.tar.gz data.tar.gz
           
-          echo "✅ IPK built"
-          file "bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Control file check ==="
-          tar -xzf "bin/packages/${PKG}_${VER}_all.ipk" control.tar.gz -O 2>/dev/null | tar -xzf - control/CONTROL 2>/dev/null | head -20
-          echo "=== Hex dump first 50 bytes ==="
-          xxd "bin/packages/${PKG}_${VER}_all.ipk" | head -3
+          echo "✅ IPK built successfully"
+          file "../../bin/packages/${PKG}_${VER}_all.ipk"
+          echo "=== Archive contents ==="
+          ar t "../../bin/packages/${PKG}_${VER}_all.ipk"
+          echo "=== Control file ==="
+          tar -xzf "../../bin/packages/${PKG}_${VER}_all.ipk" control.tar.gz -O 2>/dev/null | tar -xzf - ./CONTROL/control 2>/dev/null || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
