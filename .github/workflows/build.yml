@@ -17,60 +17,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare OLED CSS & Font
+      - name: Prepare Assets
         run: |
-          if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
-            echo "❌ oled-black.css not found!" && exit 1
-          fi
+          # Проверяем CSS
+          test -f htdocs/luci-static/argon/css/oled-black.css || { echo "❌ CSS not found"; exit 1; }
+          # Скачиваем шрифт
           mkdir -p htdocs/luci-static/argon/fonts
-          curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" -o htdocs/luci-static/argon/fonts/VT323.woff2
-          echo "✅ Assets prepared"
+          curl -sLo htdocs/luci-static/argon/fonts/VT323.woff2 \
+            "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2"
 
-      - name: Install opkg-build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y opkg-utils
-
-      - name: Build IPK with opkg-build
+      - name: Build IPK
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
-          WORKSPACE="$GITHUB_WORKSPACE"
+          WS="$GITHUB_WORKSPACE"
           
-          # Создаём корень пакета
-          PKG_ROOT=$(mktemp -d)
-          mkdir -p "$PKG_ROOT"/{CONTROL,www/luci-static/argon,usr/share/luci}
+          # Временные директории
+          D=$(mktemp -d)  # данные
+          C=$(mktemp -d)  # control
+          B=$(mktemp -d)  # сборка
           
-          # Копируем файлы
-          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$PKG_ROOT/www/luci-static/argon/"
-          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
+          # 1. Копируем файлы темы
+          mkdir -p "$D/www/luci-static/argon" "$D/usr/share/luci"
+          cp -r "$WS/htdocs/luci-static/argon/"* "$D/www/luci-static/argon/"
+          [ -d "$WS/ucode" ] && cp -r "$WS/ucode/"* "$D/usr/share/luci/" || true
           
-          # Создаём control файл (минимальный, с пустой строкой в конце!)
-          printf "Package: %s\n" "$PKG" > "$PKG_ROOT/CONTROL/control"
-          printf "Version: %s\n" "$VER" >> "$PKG_ROOT/CONTROL/control"
-          printf "Depends: luci-base\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Section: luci\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Architecture: all\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "\n" >> "$PKG_ROOT/CONTROL/control"  # 🔥 Пустая строка в конце — ОБЯЗАТЕЛЬНО!
+          # 2. Создаём CONTROL/control (ОБЯЗАТЕЛЬНО с пустой строкой в конце!)
+          mkdir -p "$C/CONTROL"
+          cat > "$C/CONTROL/control" << 'EOF'
+Package: PLACEHOLDER_PKG
+Version: PLACEHOLDER_VER
+Depends: luci-base
+Section: luci
+Architecture: all
+Maintainer: Jerrykuku <jerrykuku@qq.com>
+Description: Argon OLED Black Theme
+
+EOF
+          # Заменяем плейсхолдеры
+          sed -i "s/PLACEHOLDER_PKG/$PKG/" "$C/CONTROL/control"
+          sed -i "s/PLACEHOLDER_VER/$VER/" "$C/CONTROL/control"
           
-          # Скрипты (опционально)
-          printf '#!/bin/sh\nexit 0\n' > "$PKG_ROOT/CONTROL/postinst"
-          chmod 755 "$PKG_ROOT/CONTROL/postinst"
+          # 3. postinst скрипт
+          printf '#!/bin/sh\nexit 0\n' > "$C/CONTROL/postinst"
+          chmod 755 "$C/CONTROL/postinst"
           
-          # Создаём выходную папку и собираем пакет через opkg-build
-          mkdir -p "$WORKSPACE/bin/packages"
-          # -c: не проверять control файл строго
-          # -o 0 -g 0: установить владельца root:root
-          opkg-build -c -o 0 -g 0 "$PKG_ROOT" "$WORKSPACE/bin/packages"
+          # 4. Создаём tar-архивы с ./ префиксом
+          tar -czf "$B/data.tar.gz" -C "$D" --transform 's,^\.,./,' .
+          tar -czf "$B/control.tar.gz" -C "$C" --transform 's,^\.,./,' .
           
-          echo "✅ IPK built with opkg-build"
-          file "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Archive contents ==="
-          ar t "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Control file ==="
-          tar -xzf "$WORKSPACE/bin/packages/${PKG}_${VER}_all.ipk" control.tar.gz -O 2>/dev/null | tar -xzf - ./CONTROL/control 2>/dev/null || true
+          # 5. debian-binary (ровно 4 байта: "2.0\n")
+          printf '2.0\n' > "$B/debian-binary"
+          
+          # 6. Собираем .ipk через ar (строгий порядок!)
+          mkdir -p "$WS/bin/packages"
+          OUT="$WS/bin/packages/${PKG}_${VER}_all.ipk"
+          ar rcs "$OUT" "$B/debian-binary" "$B/control.tar.gz" "$B/data.tar.gz"
+          
+          # 7. Проверка
+          echo "✅ Built: $OUT"
+          file "$OUT"
+          echo "=== Archive ===" && ar t "$OUT"
+          echo "=== Control ===" && tar -xOf "$OUT" control.tar.gz | tar -xzf - ./CONTROL/control
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
