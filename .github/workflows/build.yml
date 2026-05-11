@@ -19,77 +19,51 @@ jobs:
 
       - name: Prepare OLED CSS & Font
         run: |
-          # Проверяем наличие основного CSS-файла
           if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
             echo "❌ oled-black.css not found!"
             exit 1
           fi
-          
-          # Создаём папку для шрифтов и скачиваем VT323
           mkdir -p htdocs/luci-static/argon/fonts
           curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" \
             -o htdocs/luci-static/argon/fonts/VT323.woff2
-          
           echo "✅ OLED assets prepared"
 
       - name: Build IPK manually
         run: |
-          # Создаём временную структуру пакета
           PKG_ROOT=$(mktemp -d)
           mkdir -p "$PKG_ROOT"/{CONTROL,usr/share/luci,www/luci-static/argon}
           
-          # Копируем статические файлы (CSS, шрифты, картинки)
+          # Копируем файлы
           cp -r htdocs/luci-static/argon/* "$PKG_ROOT/www/luci-static/argon/"
+          [ -d "ucode" ] && cp -r ucode/* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
           
-          # Копируем ucode-шаблоны (если есть)
-          if [ -d "ucode" ]; then
-            cp -r ucode/* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
-          fi
+          # Создаём control-файл
+          printf "Package: %s\n" "${{ env.PACKAGE_NAME }}" > "$PKG_ROOT/CONTROL/control"
+          printf "Version: %s\n" "${{ env.PACKAGE_VERSION }}" >> "$PKG_ROOT/CONTROL/control"
+          printf "Depends: luci-base\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "SourceName: %s\n" "${{ env.PACKAGE_NAME }}" >> "$PKG_ROOT/CONTROL/control"
+          printf "Section: luci\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$PKG_ROOT/CONTROL/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "Architecture: all\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "Installed-Size: 0\n" >> "$PKG_ROOT/CONTROL/control"
+          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$PKG_ROOT/CONTROL/control"
           
-          # Создаём control-файл (метаданные пакета)
-          cat > "$PKG_ROOT/CONTROL/control" << EOF
-          Package: ${{ env.PACKAGE_NAME }}
-          Version: ${{ env.PACKAGE_VERSION }}
-          Depends: luci-base
-          Source: https://github.com/jerrykuku/luci-theme-argon
-          SourceName: ${{ env.PACKAGE_NAME }}
-          Section: luci
-          SourceDateEpoch: $(date +%s)
-          Maintainer: Jerrykuku <jerrykuku@qq.com>
-          Architecture: all
-          Installed-Size: 0
-          Description: Argon OLED Black Theme with VT323 pixel font. Pure black background for AMOLED/OLED displays with retro console styling.
-          EOF
-          
-          # Создаём conffiles (если есть конфиги, которые нужно сохранять при обновлении)
-          # echo "/etc/config/argon" > "$PKG_ROOT/CONTROL/conffiles"
-          
-          # Создаём postinst скрипт (опционально, для применения темы после установки)
-          cat > "$PKG_ROOT/CONTROL/postinst" << 'EOF'
-#!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] || {
-  # Если тема установлена не в оффлайн-режиме, можно перезапустить uhttpd
-  # /etc/init.d/uhttpd restart
-  exit 0
-}
-EOF
+          # Создаём postinst скрипт
+          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/postinst"
           chmod 755 "$PKG_ROOT/CONTROL/postinst"
           
-          # Создаём prerm скрипт (опционально, для очистки перед удалением)
-          cat > "$PKG_ROOT/CONTROL/prerm" << 'EOF'
-#!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] || {
-  exit 0
-}
-EOF
+          # Создаём prerm скрипт
+          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/prerm"
           chmod 755 "$PKG_ROOT/CONTROL/prerm"
           
-          # Собираем .ipk (это просто tar.gz с правильной структурой)
+          # Собираем .ipk
           mkdir -p bin/packages
           cd "$PKG_ROOT"
           tar -czf "$(pwd)/../../../bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" .
           
-          echo "✅ IPK created successfully!"
+          echo "✅ IPK created:"
           ls -lh bin/packages/
 
       - name: Verify IPK structure
