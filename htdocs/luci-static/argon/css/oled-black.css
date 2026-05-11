@@ -1,0 +1,213 @@
+/* 
+ * OLED Black Theme for luci-theme-argon
+ * Pure CSS override - no Less compilation needed
+ */
+
+/* === PIXEL FONT === */
+@font-face {
+    font-family: 'ConsolePixel';
+    src: url('../fonts/VT323.woff2') format('woff2');
+    font-display: swap;
+}
+
+/* === GLOBAL === */
+body {
+    background: #000000 !important;
+    color: #b0b0b0 !important;
+    font-family: 'ConsolePixel', 'VT323', 'Courier New', monospace !important;
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+    -webkit-font-smoothing: none !important;
+    -moz-osx-font-smoothing: grayscale !important;
+}
+
+/* Отключаем размытие для экономии батареи на OLED */
+* {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+/* === CONTAINERS === */
+.main, .main-right, .login-container,
+.cbi-section, .panel, .modal, .cbi-section-node {
+    background: #111111 !important;
+    border: 1px solid #222222 !important;
+}
+
+/* === HEADERS === */
+h1, h2, h3, h4, .panel-title, .brand, header::after {
+    color: #ffffff !important;
+    background: #0a0a0a !important;
+    border-bottom: 1px solid #222222 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* === SIDEBAR NAVIGATION === */
+.main-left {
+    background: #111111 !important;
+    border-right: 1px solid #222222 !important;
+}
+
+.main-left .nav li a {
+    color: #b0b0b0 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    padding: 12px 20px !important;
+}
+
+.main-left .nav li a:hover,
+.main-left .nav li a.active {
+    background: #00cc44 !important;
+    color: #000000 !important;
+    font-weight: bold;
+}
+
+.main-left .nav li.menu:hover {
+    background: #0a0a0a !important;
+}
+
+/* === INPUTS & FORMS === */
+input, select, textarea, .cbi-dropdown, .cbi-input-textarea,
+.cbi-value-field input, .cbi-value-field select {
+    background: #0a0a0a !important;
+    color: #ffffff !important;
+    border: 1px solid #222222 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    border-radius: 0 !important;
+    padding: 6px 8px !important;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: #00cc44 !important;
+    outline: none;
+}
+
+/* === BUTTONS === */
+.cbi-button, .btn, button {
+    background: #00cc44 !important;
+    color: #000000 !important;
+    border: 1px solid #00cc44 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    border-radius: 0 !important;
+    padding: 8px 16px !important;
+    cursor: pointer;
+}
+
+.cbi-button:hover, .btn:hover, button:hover {
+    background: #008833 !important;
+    color: #ffffff !important;
+}
+
+.cbi-button-negative {
+    background: #cc2222 !important;
+    border-color: #cc2222 !important;
+}
+
+/* === TABLES === */
+table, .table, .cbi-section-table {
+    background: transparent !important;
+}
+
+table tr:nth-of-type(2n), .table .tr:nth-of-type(2n) {
+    background: #0a0a0a !important;
+}
+
+table th, table td, .table .th, .table .td,
+.cbi-section-table th, .cbi-section-table td {
+    border-color: #222222 !important;
+    color: #b0b0b0 !important;
+    background: transparent !important;
+    padding: 8px !important;
+}
+
+/* === TABS === */
+.tabs, .cbi-tabmenu {
+    background: #0a0a0a !important;
+    border-bottom: 1px solid #222222 !important;
+}
+
+.tabs li, .cbi-tabmenu li {
+    background: transparent !important;
+}
+
+.tabs li[class~="active"], .cbi-tabmenu li.cbi-tab,
+.tabs li:hover, .cbi-tabmenu li:hover {
+    border-bottom: 2px solid #00cc44 !important;
+    background: #000000 !important;
+}
+
+.tabs li a, .cbi-tabmenu li a {
+    color: #b0b0b0 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+}
+
+.tabs li[class~="active"] a, .cbi-tabmenu li.cbi-tab a {
+    color: #00cc44 !important;
+    font-weight: bold;
+}
+
+/* === LINKS === */
+a:link, a:visited, a:active {
+    color: #00cc44 !important;
+    text-decoration: none;
+}
+a:hover {
+    color: #00ff55 !important;
+    text-decoration: underline;
+}
+
+/* === CONSOLE / LOGS - RETRO GREEN === */
+#syslog, #diag-rc-output > pre, textarea[readonly],
+.code-block, .terminal {
+    background: #000000 !important;
+    color: #00ff00 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    font-size: 13px !important;
+    border: 1px solid #003300 !important;
+    padding: 10px !important;
+}
+
+/* === STATUS LABELS === */
+.label {
+    border-radius: 0 !important;
+    font-family: 'ConsolePixel', 'VT323', monospace !important;
+    padding: 3px 6px !important;
+    font-size: 12px !important;
+}
+.label.success { background: #00aa00 !important; color: #000 !important; }
+.label.warning { background: #ccaa00 !important; color: #000 !important; }
+.label.error, .label.danger { background: #cc2222 !important; color: #fff !important; }
+
+/* === PROGRESS BARS === */
+.cbi-progressbar {
+    background: #0a0a0a !important;
+    border: 1px solid #222222 !important;
+}
+.cbi-progressbar div {
+    background: #00cc44 !important;
+}
+
+/* === SCROLLBAR (Webkit) === */
+::-webkit-scrollbar {
+    width: 14px;
+    background: #000000;
+}
+::-webkit-scrollbar-thumb {
+    background: #00cc44;
+    border: 3px solid #000000;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #008833;
+}
+
+/* === MOBILE === */
+@media screen and (max-width: 768px) {
+    body { font-size: 14px !important; }
+    .cbi-button { font-size: 12px !important; padding: 6px 12px !important; }
+    .main-left { width: 100% !important; }
+}
