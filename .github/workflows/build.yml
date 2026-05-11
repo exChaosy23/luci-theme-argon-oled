@@ -31,59 +31,54 @@ jobs:
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
           
-          # Временные директории
           DATA_DIR=$(mktemp -d)
           CTRL_DIR=$(mktemp -d)
           BUILD_DIR=$(mktemp -d)
           
-          # 1. Создаём структуру данных (payload)
           mkdir -p "$DATA_DIR"/{www/luci-static/argon,usr/share/luci}
           cp -r htdocs/luci-static/argon/* "$DATA_DIR/www/luci-static/argon/"
           [ -d ucode ] && cp -r ucode/* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
           
-          # 2. Создаём CONTROL/control (OpenWrt формат)
           mkdir -p "$CTRL_DIR/CONTROL"
-          cat > "$CTRL_DIR/CONTROL/control" << CTRL_EOF
-Package: $PKG
-Version: $VER
-Depends: luci-base
-Source: https://github.com/jerrykuku/luci-theme-argon
-Section: luci
-Priority: optional
-Architecture: all
-Maintainer: Jerrykuku <jerrykuku@qq.com>
-Installed-Size: 2048
-Description: Argon OLED Black Theme with VT323 pixel font
-CTRL_EOF
-          # Гарантируем чистые LF-переносы
+          
+          # Создаём control файл через printf (без heredoc!)
+          printf "Package: %s\n" "$PKG" > "$CTRL_DIR/CONTROL/control"
+          printf "Version: %s\n" "$VER" >> "$CTRL_DIR/CONTROL/control"
+          printf "Depends: luci-base\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Section: luci\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Priority: optional\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Architecture: all\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Installed-Size: 2048\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$CTRL_DIR/CONTROL/control"
+          
+          # Удаляем возможные \r
           sed -i 's/\r$//' "$CTRL_DIR/CONTROL/control"
           
-          # Скрипты (опционально)
+          # Скрипты
           printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/postinst"
           chmod 755 "$CTRL_DIR/CONTROL/postinst"
           printf '#!/bin/sh\nexit 0\n' > "$CTRL_DIR/CONTROL/prerm"
           chmod 755 "$CTRL_DIR/CONTROL/prerm"
           
-          # 3. Создаём data.tar.gz (с ./ префиксом!)
+          # data.tar.gz с ./ префиксом
           tar -czf "$BUILD_DIR/data.tar.gz" -C "$DATA_DIR" --transform 's,^\.,./,' .
           
-          # 4. Создаём control.tar.gz (с ./ префиксом!)
+          # control.tar.gz с ./ префиксом
           tar -czf "$BUILD_DIR/control.tar.gz" -C "$CTRL_DIR" --transform 's,^\.,./,' .
           
-          # 5. Создаём debian-binary (ровно 4 байта: "2.0\n")
+          # debian-binary (ровно 4 байта)
           printf '2.0\n' > "$BUILD_DIR/debian-binary"
           
-          # 6. Собираем .ipk через ar (строгий порядок файлов!)
+          # Сборка .ipk через ar
           mkdir -p bin/packages
           cd "$BUILD_DIR"
           ar rcs "../../bin/packages/${PKG}_${VER}_all.ipk" debian-binary control.tar.gz data.tar.gz
           
-          echo "✅ IPK built successfully"
+          echo "✅ IPK built"
           file "../../bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Archive contents ==="
           ar t "../../bin/packages/${PKG}_${VER}_all.ipk"
-          echo "=== Control file ==="
-          tar -xzf "../../bin/packages/${PKG}_${VER}_all.ipk" control.tar.gz -O 2>/dev/null | tar -xzf - ./CONTROL/control 2>/dev/null || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
