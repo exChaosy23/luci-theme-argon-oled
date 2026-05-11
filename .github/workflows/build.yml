@@ -20,49 +20,47 @@ jobs:
       - name: Prepare OLED CSS & Font
         run: |
           if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
-            echo "❌ oled-black.css not found!"
-            exit 1
+            echo "❌ oled-black.css not found!" && exit 1
           fi
           mkdir -p htdocs/luci-static/argon/fonts
           curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" -o htdocs/luci-static/argon/fonts/VT323.woff2
           echo "✅ Assets prepared"
 
-      - name: Build IPK via dpkg-deb
+      - name: Build IPK (Strict OpenWrt Format)
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
           ROOT=$(mktemp -d)
           
-          # Создаём структуру пакета (пути = пути установки в OpenWrt)
-          mkdir -p "$ROOT"/{DEBIAN,www/luci-static/argon,usr/share/luci}
+          # Структура пакета
+          mkdir -p "$ROOT"/{CONTROL,www/luci-static/argon,usr/share/luci}
           
-          # Копируем статические файлы (CSS, шрифты, картинки)
+          # Копируем файлы
           cp -r htdocs/luci-static/argon/* "$ROOT/www/luci-static/argon/"
-          
-          # Копируем ucode-шаблоны (если есть)
           [ -d ucode ] && cp -r ucode/* "$ROOT/usr/share/luci/" || true
           
-          # Создаём DEBIAN/control (без heredoc, чтобы избежать ошибок YAML)
-          printf "Package: %s\n" "$PKG" > "$ROOT/DEBIAN/control"
-          printf "Version: %s\n" "$VER" >> "$ROOT/DEBIAN/control"
-          printf "Depends: luci-base\n" >> "$ROOT/DEBIAN/control"
-          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$ROOT/DEBIAN/control"
-          printf "Section: luci\n" >> "$ROOT/DEBIAN/control"
-          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$ROOT/DEBIAN/control"
-          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$ROOT/DEBIAN/control"
-          printf "Architecture: all\n" >> "$ROOT/DEBIAN/control"
-          printf "Installed-Size: 2048\n" >> "$ROOT/DEBIAN/control"
-          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$ROOT/DEBIAN/control"
+          # DEBIAN/CONTROL файл (строгий формат OpenWrt)
+          printf "Package: %s\nVersion: %s\nDepends: luci-base\nSection: luci\nPriority: optional\nArchitecture: all\nMaintainer: Jerrykuku <jerrykuku@qq.com>\nSource: https://github.com/jerrykuku/luci-theme-argon\nDescription: Argon OLED Black Theme with VT323 pixel font\n\n" "$PKG" "$VER" > "$ROOT/CONTROL/control"
           
-          # Убираем world-writable permissions (требование dpkg-deb)
-          chmod -R go-w "$ROOT"
+          # Скрипты установки/удаления
+          printf '#!/bin/sh\nexit 0\n' > "$ROOT/CONTROL/postinst"
+          chmod 755 "$ROOT/CONTROL/postinst"
+          printf '#!/bin/sh\nexit 0\n' > "$ROOT/CONTROL/prerm"
+          chmod 755 "$ROOT/CONTROL/prerm"
           
-          # Собираем валидный .ipk
+          # Сборка архивов с ЯВНЫМ gzip (opkg не понимает zstd/xz)
+          tar -czf /tmp/control.tar.gz -C "$ROOT/CONTROL" .
+          tar -czf /tmp/data.tar.gz -C "$ROOT" .
+          echo "2.0" > /tmp/debian-binary
+          
+          # Формируем .ipk
           mkdir -p bin/packages
-          dpkg-deb --build --root-owner-group "$ROOT" "bin/packages/${PKG}_${VER}_all.ipk"
+          ar rcs "bin/packages/${PKG}_${VER}_all.ipk" /tmp/debian-binary /tmp/control.tar.gz /tmp/data.tar.gz
           
           echo "✅ IPK built successfully"
           file "bin/packages/${PKG}_${VER}_all.ipk"
+          echo "=== Archive structure ==="
+          ar t "bin/packages/${PKG}_${VER}_all.ipk"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
