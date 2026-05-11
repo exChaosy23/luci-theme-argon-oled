@@ -30,14 +30,13 @@ jobs:
 
       - name: Build IPK manually
         run: |
+          WORKSPACE="$GITHUB_WORKSPACE"
           PKG_ROOT=$(mktemp -d)
           mkdir -p "$PKG_ROOT"/{CONTROL,usr/share/luci,www/luci-static/argon}
           
-          # Копируем файлы
-          cp -r htdocs/luci-static/argon/* "$PKG_ROOT/www/luci-static/argon/"
-          [ -d "ucode" ] && cp -r ucode/* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
+          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$PKG_ROOT/www/luci-static/argon/"
+          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
           
-          # Создаём control-файл
           printf "Package: %s\n" "${{ env.PACKAGE_NAME }}" > "$PKG_ROOT/CONTROL/control"
           printf "Version: %s\n" "${{ env.PACKAGE_VERSION }}" >> "$PKG_ROOT/CONTROL/control"
           printf "Depends: luci-base\n" >> "$PKG_ROOT/CONTROL/control"
@@ -50,26 +49,21 @@ jobs:
           printf "Installed-Size: 0\n" >> "$PKG_ROOT/CONTROL/control"
           printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$PKG_ROOT/CONTROL/control"
           
-          # Создаём postinst скрипт
           printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/postinst"
           chmod 755 "$PKG_ROOT/CONTROL/postinst"
-          
-          # Создаём prerm скрипт
           printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/prerm"
           chmod 755 "$PKG_ROOT/CONTROL/prerm"
           
-          # Собираем .ipk
-          mkdir -p bin/packages
-          cd "$PKG_ROOT"
-          tar -czf "$(pwd)/../../../bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" .
+          mkdir -p "$WORKSPACE/bin/packages"
+          tar -czf "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" -C "$PKG_ROOT" .
           
           echo "✅ IPK created:"
-          ls -lh bin/packages/
+          ls -lh "$WORKSPACE/bin/packages/"
 
       - name: Verify IPK structure
         run: |
           echo "=== IPK Contents ==="
-          tar -tzf bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk | head -30
+          tar -tzf "$GITHUB_WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" | head -30
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
