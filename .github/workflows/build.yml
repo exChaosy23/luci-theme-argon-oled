@@ -19,66 +19,49 @@ jobs:
 
       - name: Prepare Assets
         run: |
-          # Проверяем CSS
-          test -f htdocs/luci-static/argon/css/oled-black.css || { echo "❌ CSS not found"; exit 1; }
-          # Скачиваем шрифт
+          test -f htdocs/luci-static/argon/css/oled-black.css || { echo "CSS not found"; exit 1; }
           mkdir -p htdocs/luci-static/argon/fonts
-          curl -sLo htdocs/luci-static/argon/fonts/VT323.woff2 \
-            "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2"
+          curl -sLo htdocs/luci-static/argon/fonts/VT323.woff2 "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2"
 
       - name: Build IPK
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           VER="${{ env.PACKAGE_VERSION }}"
           WS="$GITHUB_WORKSPACE"
+          D=$(mktemp -d)
+          C=$(mktemp -d)
+          B=$(mktemp -d)
           
-          # Временные директории
-          D=$(mktemp -d)  # данные
-          C=$(mktemp -d)  # control
-          B=$(mktemp -d)  # сборка
-          
-          # 1. Копируем файлы темы
           mkdir -p "$D/www/luci-static/argon" "$D/usr/share/luci"
           cp -r "$WS/htdocs/luci-static/argon/"* "$D/www/luci-static/argon/"
           [ -d "$WS/ucode" ] && cp -r "$WS/ucode/"* "$D/usr/share/luci/" || true
           
-          # 2. Создаём CONTROL/control (ОБЯЗАТЕЛЬНО с пустой строкой в конце!)
           mkdir -p "$C/CONTROL"
-          cat > "$C/CONTROL/control" << 'EOF'
-Package: PLACEHOLDER_PKG
-Version: PLACEHOLDER_VER
-Depends: luci-base
-Section: luci
-Architecture: all
-Maintainer: Jerrykuku <jerrykuku@qq.com>
-Description: Argon OLED Black Theme
-
-EOF
-          # Заменяем плейсхолдеры
-          sed -i "s/PLACEHOLDER_PKG/$PKG/" "$C/CONTROL/control"
-          sed -i "s/PLACEHOLDER_VER/$VER/" "$C/CONTROL/control"
           
-          # 3. postinst скрипт
+          # Создаём control файл через printf (НИКАКИХ heredoc!)
+          printf "Package: %s\n" "$PKG" > "$C/CONTROL/control"
+          printf "Version: %s\n" "$VER" >> "$C/CONTROL/control"
+          printf "Depends: luci-base\n" >> "$C/CONTROL/control"
+          printf "Section: luci\n" >> "$C/CONTROL/control"
+          printf "Architecture: all\n" >> "$C/CONTROL/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$C/CONTROL/control"
+          printf "Description: Argon OLED Black Theme\n" >> "$C/CONTROL/control"
+          printf "\n" >> "$C/CONTROL/control"
+          
           printf '#!/bin/sh\nexit 0\n' > "$C/CONTROL/postinst"
           chmod 755 "$C/CONTROL/postinst"
           
-          # 4. Создаём tar-архивы с ./ префиксом
           tar -czf "$B/data.tar.gz" -C "$D" --transform 's,^\.,./,' .
           tar -czf "$B/control.tar.gz" -C "$C" --transform 's,^\.,./,' .
-          
-          # 5. debian-binary (ровно 4 байта: "2.0\n")
           printf '2.0\n' > "$B/debian-binary"
           
-          # 6. Собираем .ipk через ar (строгий порядок!)
           mkdir -p "$WS/bin/packages"
           OUT="$WS/bin/packages/${PKG}_${VER}_all.ipk"
           ar rcs "$OUT" "$B/debian-binary" "$B/control.tar.gz" "$B/data.tar.gz"
           
-          # 7. Проверка
           echo "✅ Built: $OUT"
           file "$OUT"
-          echo "=== Archive ===" && ar t "$OUT"
-          echo "=== Control ===" && tar -xOf "$OUT" control.tar.gz | tar -xzf - ./CONTROL/control
+          ar t "$OUT"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
