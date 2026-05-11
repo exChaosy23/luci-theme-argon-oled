@@ -1,0 +1,143 @@
+// out: ../htdocs/luci-static/argon/css/oled-black.css, compress: true, sourceMap: false
+
+@import "variables.less";
+
+body {
+    background: @oled-black !important;
+    color: @oled-text !important;
+    font-family: @font-pixel !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: none !important;
+    -moz-osx-font-smoothing: grayscale !important;
+}
+
+// Отключаем размытие для производительности на OLED
+* {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+// Карточки и контейнеры
+.cbi-section,
+.panel,
+.main-left,
+.modal {
+    background: @oled-card !important;
+    border: 1px solid @oled-border !important;
+    box-shadow: none !important;
+}
+
+// Заголовки
+h1, h2, h3, h4, .panel-title {
+    color: @oled-text-bright !important;
+    background: @oled-dark !important;
+    border-bottom: 1px solid @oled-border !important;
+    font-family: @font-pixel !important;
+    letter-spacing: 1px;
+}
+
+// Ссылки
+a:link, a:visited, a:active {
+    color: @oled-primary !important;
+    text-decoration: none;
+}
+a:hover {
+    color: @oled-primary-dim !important;
+    text-decoration: underline;
+}
+
+// Поля ввода
+input, select, textarea, .cbi-dropdown {
+    background: @oled-dark !important;
+    color: @oled-text-bright !important;
+    border: 1px solid @oled-border !important;
+    font-family: @font-pixel !important;
+    font-size: 13px !important;
+    border-radius: 0 !important;
+}
+
+// Кнопки
+.cbi-button, .btn {
+    background: @oled-primary !important;
+    color: #000 !important;
+    border: 1px solid @oled-primary !important;
+    font-family: @font-pixel !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    &:hover {
+        background: @oled-primary-dim !important;
+    }
+}
+
+// Таблицы
+table, .table {
+    background: @oled-card !important;
+    tr:nth-of-type(2n) {
+        background: @oled-dark !important;
+    }
+    th, td, .th, .td {
+        border-color: @oled-border !important;
+        color: @oled-text !important;
+    }
+}
+
+// Меню навигации
+.main-left {
+    background: @oled-card !important;
+    .nav li a {
+        color: @oled-text !important;
+        &:hover, &.active {
+            background: @oled-primary !important;
+            color: #000 !important;
+        }
+    }
+}
+
+// Прогресс-бары
+.cbi-progressbar {
+    background: @oled-dark !important;
+    div {
+        background: @oled-primary !important;
+    }
+}
+
+// Статусные индикаторы
+.label.success { background: #00aa00 !important; color: #000 !important; }
+.label.warning { background: #ccaa00 !important; color: #000 !important; }
+.label.error { background: #cc0000 !important; color: #fff !important; }
+
+// Консольный вывод (syslog, diagnostics)
+#syslog, #diag-rc-output > pre, textarea[readonly] {
+    background: #000 !important;
+    color: #00ff00 !important;  // Классический терминальный зелёный
+    font-family: @font-pixel !important;
+    font-size: 12px !important;
+    border: 1px solid #003300 !important;
+}
+
+// Скроллбары (Webkit)
+::-webkit-scrollbar {
+    width: 12px;
+    background: @oled-black;
+}
+::-webkit-scrollbar-thumb {
+    background: @oled-primary;
+    border: 2px solid @oled-black;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: @oled-primary-dim;
+}
+
+// Адаптация для мобильных
+@media screen and (max-width: 768px) {
+    body {
+        font-size: 13px !important;
+    }
+    .cbi-button {
+        font-size: 11px !important;
+        padding: 8px 12px !important;
+    }
+}
