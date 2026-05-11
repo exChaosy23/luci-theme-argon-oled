@@ -1,38 +1,115 @@
-- name: Build IPK manually
-  run: |
-    # Создаём структуру пакета
-    mkdir -p package/luci-theme-argon/CONTROL
-    mkdir -p package/luci-theme-argon/www/luci-static/argon
-    
-    # Копируем файлы
-    cp -r htdocs/luci-static/argon/* package/luci-theme-argon/www/luci-static/argon/
-    cp -r ucode package/luci-theme-argon/usr/share/luci/ 2>/dev/null || true
-    cp Makefile package/luci-theme-argon/
-    
-    # Создаём control-файл
-    cat > package/luci-theme-argon/CONTROL/control << EOF
-    Package: luci-theme-argon
-    Version: ${PKG_VERSION:-1.0}
-    Depends: luci-base
-    Source: https://github.com/jerrykuku/luci-theme-argon
-    SourceName: luci-theme-argon
-    Section: luci
-    SourceDateEpoch: $(date +%s)
-    Maintainer: Jerrykuku <jerrykuku@qq.com>
-    Architecture: all
-    Installed-Size: 0
-    Description: Argon OLED Black Theme with pixel font
-    EOF
-    
-    # Создаём conffiles (если есть конфиги)
-    # echo "/etc/config/argon" > package/luci-theme-argon/CONTROL/conffiles
-    
-    # Собираем .ipk (требуется opkg-utils или dpkg-deb)
-    mkdir -p bin/packages
-    cd package/luci-theme-argon
-    tar -czf ../../bin/packages/luci-theme-argon_${PKG_VERSION:-1.0}_all.ipk \
-      -C . www ucode CONTROL/Makefile 2>/dev/null || \
-    tar -czf ../../bin/packages/luci-theme-argon_${PKG_VERSION:-1.0}_all.ipk .
-    
-    echo "✅ IPK created:"
-    ls -la ../../bin/packages/
+name: Build OLED Theme
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  PACKAGE_NAME: luci-theme-argon
+  PACKAGE_VERSION: 2.4.3-20250722-oled
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare OLED CSS & Font
+        run: |
+          # Проверяем наличие основного CSS-файла
+          if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
+            echo "❌ oled-black.css not found!"
+            exit 1
+          fi
+          
+          # Создаём папку для шрифтов и скачиваем VT323
+          mkdir -p htdocs/luci-static/argon/fonts
+          curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" \
+            -o htdocs/luci-static/argon/fonts/VT323.woff2
+          
+          echo "✅ OLED assets prepared"
+
+      - name: Build IPK manually
+        run: |
+          # Создаём временную структуру пакета
+          PKG_ROOT=$(mktemp -d)
+          mkdir -p "$PKG_ROOT"/{CONTROL,usr/share/luci,www/luci-static/argon}
+          
+          # Копируем статические файлы (CSS, шрифты, картинки)
+          cp -r htdocs/luci-static/argon/* "$PKG_ROOT/www/luci-static/argon/"
+          
+          # Копируем ucode-шаблоны (если есть)
+          if [ -d "ucode" ]; then
+            cp -r ucode/* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
+          fi
+          
+          # Создаём control-файл (метаданные пакета)
+          cat > "$PKG_ROOT/CONTROL/control" << EOF
+          Package: ${{ env.PACKAGE_NAME }}
+          Version: ${{ env.PACKAGE_VERSION }}
+          Depends: luci-base
+          Source: https://github.com/jerrykuku/luci-theme-argon
+          SourceName: ${{ env.PACKAGE_NAME }}
+          Section: luci
+          SourceDateEpoch: $(date +%s)
+          Maintainer: Jerrykuku <jerrykuku@qq.com>
+          Architecture: all
+          Installed-Size: 0
+          Description: Argon OLED Black Theme with VT323 pixel font. Pure black background for AMOLED/OLED displays with retro console styling.
+          EOF
+          
+          # Создаём conffiles (если есть конфиги, которые нужно сохранять при обновлении)
+          # echo "/etc/config/argon" > "$PKG_ROOT/CONTROL/conffiles"
+          
+          # Создаём postinst скрипт (опционально, для применения темы после установки)
+          cat > "$PKG_ROOT/CONTROL/postinst" << 'EOF'
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] || {
+  # Если тема установлена не в оффлайн-режиме, можно перезапустить uhttpd
+  # /etc/init.d/uhttpd restart
+  exit 0
+}
+EOF
+          chmod 755 "$PKG_ROOT/CONTROL/postinst"
+          
+          # Создаём prerm скрипт (опционально, для очистки перед удалением)
+          cat > "$PKG_ROOT/CONTROL/prerm" << 'EOF'
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] || {
+  exit 0
+}
+EOF
+          chmod 755 "$PKG_ROOT/CONTROL/prerm"
+          
+          # Собираем .ipk (это просто tar.gz с правильной структурой)
+          mkdir -p bin/packages
+          cd "$PKG_ROOT"
+          tar -czf "$(pwd)/../../../bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" .
+          
+          echo "✅ IPK created successfully!"
+          ls -lh bin/packages/
+
+      - name: Verify IPK structure
+        run: |
+          echo "=== IPK Contents ==="
+          tar -tzf bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk | head -30
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-oled-black
+          path: bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk
+          retention-days: 90
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
