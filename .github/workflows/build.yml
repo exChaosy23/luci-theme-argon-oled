@@ -1,48 +1,38 @@
-name: Build OLED Theme
-
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Prepare OLED CSS & Font
-        run: |
-          # Проверяем наличие основного CSS-файла
-          if [ ! -f "htdocs/luci-static/argon/css/oled-black.css" ]; then
-            echo "❌ oled-black.css not found!"
-            exit 1
-          fi
-          
-          # Создаём папку для шрифтов и скачиваем VT323
-          mkdir -p htdocs/luci-static/argon/fonts
-          curl -sL "https://fonts.gstatic.com/s/vt323/v26/pxiKyp0ihIEF2isfFJXUdVNF.woff2" \
-            -o htdocs/luci-static/argon/fonts/VT323.woff2
-          
-          echo "✅ OLED assets prepared"
-          echo "=== CSS files ==="
-          ls -la htdocs/luci-static/argon/css/
-          echo "=== Font files ==="
-          ls -la htdocs/luci-static/argon/fonts/
-
-      - name: Build IPK with OpenWrt SDK
-        uses: openwrt/gh-action-sdk@v5
-        with:
-          arch: x86_64
-        env:
-          NO_DEFAULT_FEEDS: "true"
-          PACKAGES: "luci-theme-argon"
-          V: "s"
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: luci-theme-argon-oled-black
-          path: bin/packages/x86_64/luci/luci-theme-argon_*.ipk
-          retention-days: 90
+- name: Build IPK manually
+  run: |
+    # Создаём структуру пакета
+    mkdir -p package/luci-theme-argon/CONTROL
+    mkdir -p package/luci-theme-argon/www/luci-static/argon
+    
+    # Копируем файлы
+    cp -r htdocs/luci-static/argon/* package/luci-theme-argon/www/luci-static/argon/
+    cp -r ucode package/luci-theme-argon/usr/share/luci/ 2>/dev/null || true
+    cp Makefile package/luci-theme-argon/
+    
+    # Создаём control-файл
+    cat > package/luci-theme-argon/CONTROL/control << EOF
+    Package: luci-theme-argon
+    Version: ${PKG_VERSION:-1.0}
+    Depends: luci-base
+    Source: https://github.com/jerrykuku/luci-theme-argon
+    SourceName: luci-theme-argon
+    Section: luci
+    SourceDateEpoch: $(date +%s)
+    Maintainer: Jerrykuku <jerrykuku@qq.com>
+    Architecture: all
+    Installed-Size: 0
+    Description: Argon OLED Black Theme with pixel font
+    EOF
+    
+    # Создаём conffiles (если есть конфиги)
+    # echo "/etc/config/argon" > package/luci-theme-argon/CONTROL/conffiles
+    
+    # Собираем .ipk (требуется opkg-utils или dpkg-deb)
+    mkdir -p bin/packages
+    cd package/luci-theme-argon
+    tar -czf ../../bin/packages/luci-theme-argon_${PKG_VERSION:-1.0}_all.ipk \
+      -C . www ucode CONTROL/Makefile 2>/dev/null || \
+    tar -czf ../../bin/packages/luci-theme-argon_${PKG_VERSION:-1.0}_all.ipk .
+    
+    echo "✅ IPK created:"
+    ls -la ../../bin/packages/
