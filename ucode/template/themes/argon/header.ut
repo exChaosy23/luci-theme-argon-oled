@@ -91,6 +91,7 @@
 	<link rel="manifest" href="{{ media }}/icon/manifest.json" crossorigin="use-credentials">
 
 	<link rel="stylesheet" href="{{ media }}/css/cascade.css{# ?v=PKG_VERSION #}">
+	
 	<style title="text/css">
 		{% if (mode == 'normal'): %}
 			@media (prefers-color-scheme: dark) {
@@ -99,7 +100,17 @@
 		{% endif %}
 		{% if (mode == 'dark'): %}
 			{{ dark_css }}
-		{% endif -%}
+		{% endif %}
+		
+		{# 🔥 OLED BLACK THEME - Font Declaration #}
+		{% if (mode == 'oled-black'): %}
+			@font-face {
+				font-family: 'ConsolePixel';
+				src: url('{{ media }}/fonts/VT323.woff2') format('woff2');
+				font-display: swap;
+			}
+		{% endif %}
+		
 		{% if (access('/etc/config/argon')): %}
 		:root {
 			--primary: {{ primary }};
@@ -111,6 +122,12 @@
 		}
 		{% endif -%}
 	</style>
+	
+	{# 🔥 OLED BLACK THEME - CSS File #}
+	{% if (mode == 'oled-black'): %}
+	<link rel="stylesheet" href="{{ media }}/css/oled-black.css?v={{ pkg_version }}">
+	{% endif %}
+	
 	<!-- Stylesheets -->
 	{% if (node?.css): %}
 	<link rel="stylesheet" href="{{ resource }}/{{ node.css}}">
@@ -124,24 +141,7 @@
 	<script src="{{ resource }}/cbi.js?v={{ version.luciversion }}"></script>
 	<script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>
 </head>
-<!-- Внутри header.ut -->
 
-<% if (theme == 'argon' || theme == 'oled-black') { %>
-    <!-- Подключаем базовые стили, если нужно, или только олед -->
-<% } %>
-
-<!-- ДОБАВЬТЕ ЭТОТ БЛОК для подключения олед-темы -->
-<% if (theme == 'oled-black') { %>
-    <link rel="stylesheet" href="<%=resource%>/argon/css/oled-black.css?v=<%=pkg_version%>">
-    <style>
-        /* Инлайн-подключение шрифта как фолбэк */
-        @font-face {
-            font-family: 'ConsolePixel';
-            src: url('<%=resource%>/argon/fonts/VT323.woff2') format('woff2');
-            font-display: swap;
-        }
-    </style>
-<% } %>
 <body
 	class="lang_{{ dispatcher.lang }} {{ node?.title ? ` - ${striptags(node.title)}` : '' }} {% if (ctx.authsession): %}logged-in{% endif %}"
 	data-page="{{ entityencode(join('-', ctx.request_path), true) }}">
