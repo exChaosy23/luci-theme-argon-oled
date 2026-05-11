@@ -28,42 +28,59 @@ jobs:
             -o htdocs/luci-static/argon/fonts/VT323.woff2
           echo "✅ OLED assets prepared"
 
-      - name: Build IPK manually
+      - name: Build IPK (ar format)
         run: |
           WORKSPACE="$GITHUB_WORKSPACE"
-          PKG_ROOT=$(mktemp -d)
-          mkdir -p "$PKG_ROOT"/{CONTROL,usr/share/luci,www/luci-static/argon}
+          BUILD_DIR=$(mktemp -d)
+          DATA_DIR=$(mktemp -d)
+          CTRL_DIR=$(mktemp -d)
           
-          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$PKG_ROOT/www/luci-static/argon/"
-          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$PKG_ROOT/usr/share/luci/" 2>/dev/null || true
+          mkdir -p "$DATA_DIR"/{www/luci-static/argon,usr/share/luci}
+          mkdir -p "$CTRL_DIR/CONTROL"
           
-          printf "Package: %s\n" "${{ env.PACKAGE_NAME }}" > "$PKG_ROOT/CONTROL/control"
-          printf "Version: %s\n" "${{ env.PACKAGE_VERSION }}" >> "$PKG_ROOT/CONTROL/control"
-          printf "Depends: luci-base\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "SourceName: %s\n" "${{ env.PACKAGE_NAME }}" >> "$PKG_ROOT/CONTROL/control"
-          printf "Section: luci\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$PKG_ROOT/CONTROL/control"
-          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Architecture: all\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Installed-Size: 0\n" >> "$PKG_ROOT/CONTROL/control"
-          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$PKG_ROOT/CONTROL/control"
+          # 1. Копируем файлы интерфейса
+          cp -r "$WORKSPACE/htdocs/luci-static/argon/"* "$DATA_DIR/www/luci-static/argon/"
+          [ -d "$WORKSPACE/ucode" ] && cp -r "$WORKSPACE/ucode/"* "$DATA_DIR/usr/share/luci/" 2>/dev/null || true
           
-          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/postinst"
-          chmod 755 "$PKG_ROOT/CONTROL/postinst"
-          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$PKG_ROOT/CONTROL/prerm"
-          chmod 755 "$PKG_ROOT/CONTROL/prerm"
+          # 2. Создаём control
+          printf "Package: %s\n" "${{ env.PACKAGE_NAME }}" > "$CTRL_DIR/CONTROL/control"
+          printf "Version: %s\n" "${{ env.PACKAGE_VERSION }}" >> "$CTRL_DIR/CONTROL/control"
+          printf "Depends: luci-base\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Source: https://github.com/jerrykuku/luci-theme-argon\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "SourceName: %s\n" "${{ env.PACKAGE_NAME }}" >> "$CTRL_DIR/CONTROL/control"
+          printf "Section: luci\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "SourceDateEpoch: %s\n" "$(date +%s)" >> "$CTRL_DIR/CONTROL/control"
+          printf "Maintainer: Jerrykuku <jerrykuku@qq.com>\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Architecture: all\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Installed-Size: 0\n" >> "$CTRL_DIR/CONTROL/control"
+          printf "Description: Argon OLED Black Theme with VT323 pixel font\n" >> "$CTRL_DIR/CONTROL/control"
           
+          # Скрипты установки/удаления
+          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$CTRL_DIR/CONTROL/postinst"
+          chmod 755 "$CTRL_DIR/CONTROL/postinst"
+          printf '#!/bin/sh\n[ -n "${IPKG_INSTROOT}" ] || { exit 0; }\n' > "$CTRL_DIR/CONTROL/prerm"
+          chmod 755 "$CTRL_DIR/CONTROL/prerm"
+          
+          # 3. Создаём data.tar.gz (только payload)
+          tar -czf "$BUILD_DIR/data.tar.gz" -C "$DATA_DIR" .
+          
+          # 4. Создаём control.tar.gz (только метаданные)
+          tar -czf "$BUILD_DIR/control.tar.gz" -C "$CTRL_DIR" .
+          
+          # 5. Создаём debian-binary
+          echo "2.0" > "$BUILD_DIR/debian-binary"
+          
+          # 6. Собираем .ipk через ar (правильный формат для opkg)
           mkdir -p "$WORKSPACE/bin/packages"
-          tar -czf "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" -C "$PKG_ROOT" .
+          ar rcs "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" \
+            "$BUILD_DIR/debian-binary" \
+            "$BUILD_DIR/control.tar.gz" \
+            "$BUILD_DIR/data.tar.gz"
           
-          echo "✅ IPK created:"
+          echo "✅ IPK created successfully"
           ls -lh "$WORKSPACE/bin/packages/"
-
-      - name: Verify IPK structure
-        run: |
-          echo "=== IPK Contents ==="
-          tar -tzf "$GITHUB_WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk" | head -30
+          echo "=== .ipk internal structure ==="
+          ar t "$WORKSPACE/bin/packages/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_VERSION }}_all.ipk"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
