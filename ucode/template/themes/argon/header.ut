@@ -124,7 +124,24 @@
 	<script src="{{ resource }}/cbi.js?v={{ version.luciversion }}"></script>
 	<script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>
 </head>
+<!-- Внутри header.ut -->
 
+<% if (theme == 'argon' || theme == 'oled-black') { %>
+    <!-- Подключаем базовые стили, если нужно, или только олед -->
+<% } %>
+
+<!-- ДОБАВЬТЕ ЭТОТ БЛОК для подключения олед-темы -->
+<% if (theme == 'oled-black') { %>
+    <link rel="stylesheet" href="<%=resource%>/argon/css/oled-black.css?v=<%=pkg_version%>">
+    <style>
+        /* Инлайн-подключение шрифта как фолбэк */
+        @font-face {
+            font-family: 'ConsolePixel';
+            src: url('<%=resource%>/argon/fonts/VT323.woff2') format('woff2');
+            font-display: swap;
+        }
+    </style>
+<% } %>
 <body
 	class="lang_{{ dispatcher.lang }} {{ node?.title ? ` - ${striptags(node.title)}` : '' }} {% if (ctx.authsession): %}logged-in{% endif %}"
 	data-page="{{ entityencode(join('-', ctx.request_path), true) }}">
